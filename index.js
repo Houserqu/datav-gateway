@@ -5,6 +5,21 @@ const cookieParser = require('cookie-parser');
 const checkLogin = require('./middleware/checkLogin')
 
 // user 用户相关
+const loginServiceProxy = httpProxy("http://127.0.0.1:7002", {
+  userResDecorator: function(proxyRes, proxyResData, userReq, userRes) {
+    // 判断 user 代理服务返回结果，如果登录成功，写入 userID 到网关 session
+
+    const dataStr = proxyResData.toString('utf8').replace(/\0/g, "")
+    const data = JSON.parse(dataStr);
+    if(data.success) {
+      console.log('登录成功');
+      userReq.session.userId = data.data.id;
+    }
+    return data
+  }
+})
+
+// user 用户相关
 const userServiceProxy = httpProxy("http://127.0.0.1:7002")
 
 // auth 权限相关
@@ -27,15 +42,24 @@ app.use(session({
   saveUninitialized:true
  }));
 
+// 写入 session 中的 userid 信息到 header 中，用于其他服务获取用户信息
 app.use((req, res, next) => {
-  req.headers['certificate-userid'] = req.session.userId;
+  req.headers['certificate-userid'] = req.session.userId || '';
   next()
 })
 
-app.all("/login", (req, res, next) => {
-  req.session.userId = 1;
-  res.json({ success: true, msg: '登录成功', data: null })
-  res.send()
+app.all("/api/login", (req, res, next) => {
+  console.log(req.session);
+  loginServiceProxy(req, res, next)
+})
+
+app.get("/api/logout", (req, res, next) => {
+  req.session.regenerate(function(err) {
+    // will have a new session here
+    if(!err) {
+      res.send({ success: true, msg: '注销成功', data: null })
+    }
+  })
 })
 
 app.all("/static/*", (req, res, next) => {
@@ -46,12 +70,11 @@ app.all("/api/passport/*", (req, res, next) => {
   passportServiceProxy(req, res, next)
 })
 
-app.all("/api/user/*", (req, res, next) => {
+app.all("/api/user/*", checkLogin, (req, res, next) => {
   userServiceProxy(req, res, next)
 })
 
 app.all("/api/auth/*", checkLogin, (req, res, next) => {
-  console.debug(req.session)
   authServiceProxy(req, res, next)
 })
 
