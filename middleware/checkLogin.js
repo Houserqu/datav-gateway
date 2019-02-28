@@ -1,7 +1,7 @@
-module.exports =  function (req, res, next) {
+module.exports = function (req, res, next) {
   // 检查 session 中 userid
-  if(!req.session.userId) {
-    res.status(403)
+  if (!req.session.userId) {
+    res.status(401)
     res.json({
       success: false,
       msg: '请登录'
